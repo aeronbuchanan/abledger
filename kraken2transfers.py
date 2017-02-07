@@ -63,7 +63,7 @@ with open(args.directory + 'ledgers.csv') as f:
           date = time.strftime('%Y-%m-%d-%H-00', time.strptime(timestr, '%Y-%m-%d %H:%M:%S'))
           currency = currencyTranslation[currency]
           amount = float(amount)
-          if type_ == 'deposit': output.write("%s, %s, %f, %s, %f, ->kraken\n" % (date, currency, amount, currency, -amount))
+          if type_ == 'deposit': output.write("%s, %s, %f, %s, %f, ->kraken\n" % (date, currency, -amount, currency, amount))
           elif type_ == 'withdrawal': output.write("%s, %s, %f, %s, %f, ->kraken\n" % (date, currency, -amount, currency, amount))
           elif type_ == 'transfer': output.write("%s, GBP, 0, %s, %s,\n" % (date, currency, amount))
           else: exit("ERROR: unexpected ledger entry type '%s' slipped through!" % type_)
