@@ -391,8 +391,7 @@ for filename in accountsFiles:
           accounts[baseCurrency].addTX(TX(-value, -value, args.start))
         # TODO: custom accounts init date
       else:
-        print('ERROR: Invalid base currency for account on line %d' % i)
-        sys.exit('currency error')
+        exit('ERROR: Invalid base currency for account on line %d' % i)
 
 class CurrencyConverter:
   def __init__(self):
@@ -474,6 +473,7 @@ class FileReader:
         entries = extractCSVs(line, 11, ln)
         if len(entries) == 0:
           return None
+        isMargin = False
         (timestr, market, category, type_, price, amount, total, fee, num, base, quote) = entries
         date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%Y-%m-%d %H:%M:%S"))
         (cur1, cur2) = market.split('/')
@@ -481,26 +481,29 @@ class FileReader:
         val2 = float(base)
 
         if category == 'Margin trade':
-          cur1 += 'margin'
+          isMargin = True
         elif category == 'Settlement':
-          cur1 += 'margin'
+          isMargin = True
           val1 = 0 # paying off lending fees
         elif category != 'Exchange':
-          print('ERROR: Unknown trade category "%s" on line %i' % (category, _i))
-          sys.exit('polo file read error')
+          exit('ERROR: Unknown trade category "%s" on line %i' % (category, _i))
 
         if type_ == "Buy": 
           if val1 < 0 or val2 > 0:
-            print('ERROR: Inconsistent %s on line %i: %f %s <> %f %s' % (type_, _i, val1, cur1, val2, cur2))
-            sys.exit('polo file read error')
+            exit('ERROR: Inconsistent %s on line %i: %f %s <> %f %s' % (type_, _i, val1, cur1, val2, cur2))
         elif type_ == "Sell":
           if val1 > 0 or val2 < 0:
-            print('ERROR: Inconsistent %s on line %i: %f %s <> %f %s' % (type_, _i, val1, cur1, val2, cur2))
-            sys.exit('polo file read error')
+            exit('ERROR: Inconsistent %s on line %i: %f %s <> %f %s' % (type_, _i, val1, cur1, val2, cur2))
         else:
-          print('ERROR: Unknown trade type "%s" on line %i' % (type_, _i))
-          sys.exit('polo file read error')
-        return InputTX(date, cur1, val1, cur2, val2)
+          exit('ERROR: Unknown trade type "%s" on line %i' % (type_, _i))
+
+        tx = InputTX(date, cur1, val1, cur2, val2)
+
+        if isMargin:
+          tx.account1 += 'margin'
+          tx.account2 += 'margin'
+
+        return tx
 
     elif firstline == '"txid","ordertxid","pair","time","type","ordertype","price","cost","fee","vol","margin","misc","ledgers"':
       # kraken
@@ -709,8 +712,8 @@ for filename in inputs:
           exit('ERROR: Invalid fund exchange on %s line %d: %s %f <> %s %f' % (filename, ln, tx.curr1, tx.amount1, tx.curr2, tx.amount2) )
 
         # Process entry
-        curr1ERROR = 0;
-        curr2ERROR = 0;
+        curr1ERROR = False;
+        curr2ERROR = False;
 
         account1 = tx.account1
         account2 = tx.account2
@@ -722,7 +725,7 @@ for filename in inputs:
             value1 = currencyPairs.convert(tx.date, tx.curr1, baseCurrency, tx.amount1)
             #print("DEBUG: conversion %s %f %s: %f %s = %f %s" % (tx.date, conversions[symb1][tx.date], symb1, tx.amount1, tx.curr1, value1, baseCurrency))
           else:
-            curr1ERROR = 1;
+            curr1ERROR = True;
           if not tx.isTransfer:
             account1 = accountPrefix + account1
 
@@ -733,7 +736,7 @@ for filename in inputs:
             value2 = currencyPairs.convert(tx.date, tx.curr2, baseCurrency, tx.amount2)
             #print("DEBUG: conversion %s %f %s: %f %s = %f %s" % (tx.date, conversions[symb2][tx.date], symb2, tx.amount2, tx.curr2, value2, baseCurrency))
           else:
-            curr2ERROR = 1;
+            curr2ERROR = True;
           if not tx.isTransfer:
             account2 = accountPrefix + account2
 
