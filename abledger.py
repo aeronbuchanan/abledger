@@ -114,7 +114,7 @@ def extractCSVs(_s, _n, _i):
 class FileWriter:
   def __init__(self, _filename):
     self.f = open('./output/' + _filename, 'w')
-    formatdef = [('date', '%s'), ('id', '%d'), ('account', '%s'), ('base', '%s'), ('value', '%f'), ('currency', '%s'), ('amount', '%f'), ('chargeable', '%f'), ('profit', '%f')]
+    formatdef = [('date', '%s'), ('id', '%s'), ('account', '%s'), ('base', '%s'), ('value', '%f'), ('currency', '%s'), ('amount', '%f'), ('chargeable', '%f'), ('profit', '%f')]
     self.categories, formats = zip(*formatdef)
     self.f.write(', '.join(map(str.title, self.categories)) + ", Base Balance, Currency Balance, Aggregated Rate, Chargeable Total, Profit Total\n")
     self.format = ', '.join(formats) + ",=sum(e$2:e%d),=sum(g$2:g%d),=max(0; j%d/k%d),=sum(h$2:h%d),=sum(i$2:i%d)\n"
@@ -371,7 +371,14 @@ class TX:
     return (a, v)
 
 def createTXid(acc1, acc2, val, date):
-  return hash((acc1, acc2, val, date))
+  s = str(abs(hash((acc1, acc2, val, date))))
+  h = ""
+  for i in range(0, math.floor(len(s) / 2)):
+    n = int(s[i:i + 2]) + 45
+    if n > 90: n += 3
+    if n > 122: h += 'X'
+    else: h += chr(n)
+  return h
 
 # read pre-ledger state and initialize
 accounts = {baseCurrency: Account(baseCurrency, baseCurrency)}
@@ -678,6 +685,7 @@ class FileReader:
           return None
         (ref, timestr, currencies, rate, given, status, received) = entries
         if status != "matched":
+          #print("DEBUG: ignoring cancelled CurrencyFair exchange '%s'" % line)
           return None
         date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%d-%b-%Y %H:%M"))
         (val1, cur1) = given.split(" ")
@@ -777,10 +785,8 @@ for filename in inputs:
 
         # add account prefix
         if not tx.isTransfer:
-          if tx.curr1 != baseCurrency:
-            account1 = accountPrefix + account1
-          if tx.curr2 != baseCurrency:
-            account2 = accountPrefix + account2
+          account1 = accountPrefix + account1
+          account2 = accountPrefix + account2
 
         if (tx.curr1 == baseCurrency and tx.amount1 !=  value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
           print("DEBUG: adding cost asymmetric tx on %s: [%s :: %f %s :: %f %s] -> [%s :: %f %s :: %f %s]" % (tx.date, account1, tx.amount1, tx.curr1, value1, baseCurrency, account2, tx.amount2, tx.curr2, value2, baseCurrency))
