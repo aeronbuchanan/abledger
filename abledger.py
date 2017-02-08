@@ -117,7 +117,7 @@ class FileWriter:
     formatdef = [('date', '%s'), ('id', '%d'), ('account', '%s'), ('base', '%s'), ('value', '%f'), ('currency', '%s'), ('amount', '%f'), ('chargeable', '%f'), ('profit', '%f')]
     self.categories, formats = zip(*formatdef)
     self.f.write(', '.join(map(str.title, self.categories)) + ", Base Balance, Currency Balance, Aggregated Rate, Chargeable Total, Profit Total\n")
-    self.format = ', '.join(formats) + ",=sum(d$2:d%d),=sum(f$2:f%d),=max(0; i%d/j%d),=sum(g$2:g%d),=sum(h$2:h%d)\n"
+    self.format = ', '.join(formats) + ",=sum(e$2:e%d),=sum(g$2:g%d),=max(0; j%d/k%d),=sum(h$2:h%d),=sum(i$2:i%d)\n"
     #self.f.write(', '.join(map(str.title, self.categories)) +"\n")
     #self.format = ', '.join(formats) + "\n"
     self.ln = 1
