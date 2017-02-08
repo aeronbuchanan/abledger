@@ -114,7 +114,7 @@ def extractCSVs(_s, _n, _i):
 class FileWriter:
   def __init__(self, _filename):
     self.f = open('./output/' + _filename, 'w')
-    formatdef = [('date', '%s'), ('account', '%s'), ('base', '%s'), ('value', '%f'), ('currency', '%s'), ('amount', '%f'), ('chargeable', '%f'), ('profit', '%f')]
+    formatdef = [('date', '%s'), ('id', '%d'), ('account', '%s'), ('base', '%s'), ('value', '%f'), ('currency', '%s'), ('amount', '%f'), ('chargeable', '%f'), ('profit', '%f')]
     self.categories, formats = zip(*formatdef)
     self.f.write(', '.join(map(str.title, self.categories)) + ", Base Balance, Currency Balance, Aggregated Rate, Chargeable Total, Profit Total\n")
     self.format = ', '.join(formats) + ",=sum(d$2:d%d),=sum(f$2:f%d),=max(0; i%d/j%d),=sum(g$2:g%d),=sum(h$2:h%d)\n"
@@ -160,7 +160,8 @@ class Account:
     v = 0
     for tx in self.ledger:
       if tx.date < startDate: continue
-      elif tx.date > endDate: break
+      elif tx.date > endDate: continue
+      #elif tx.date > endDate: break
       v += getattr(tx, attrName)
     return v
    
@@ -187,7 +188,8 @@ class Account:
     p = 0
     for tx in self.ledger:
       if tx.date < startDate: continue
-      elif tx.date > endDate: break
+      elif tx.date > endDate: continue
+      #elif tx.date > endDate: break
       elif tx.chargeable != 0:
         p += -tx.value
         n += 1
@@ -310,6 +312,7 @@ class Account:
         'currency': self.currency, 
         'basebalance': self.poolCost, 
         'currbalance': self.poolBalance, 
+        'id': tx.id
       })
 
   def __str__(self):
@@ -325,7 +328,7 @@ class Account:
 
 
 class TX:
-  def __init__(self, _a, _v, _d):
+  def __init__(self, _a, _v, _d, _id):
     #print("DEBUG TX.__init__(%f, %f, %s)" % (_a, _v, _d))
 
     self.profit = 0 # in base
@@ -335,6 +338,7 @@ class TX:
     self._unusedAmount = self.amount
     self._unusedValue = self.value
     self.date = _d
+    self.id = _id
     if _a != 0:
       self.rate = _v / _a
     else:
@@ -366,6 +370,8 @@ class TX:
     self._unusedValue = 0
     return (a, v)
 
+def createTXid(acc1, acc2, val, date):
+  return hash((acc1, acc2, val, date))
 
 # read pre-ledger state and initialize
 accounts = {baseCurrency: Account(baseCurrency, baseCurrency)}
@@ -386,9 +392,10 @@ for filename in accountsFiles:
         if currency not in accounts:
           accounts[currency] = Account(name, currency)
         # add to ledger(s)
-        accounts[currency].addTX(TX(amount, value, args.start))
+        id_ = createTXid(currency, baseCurrency, value, args.start)
+        accounts[currency].addTX(TX(amount, value, args.start, id_))
         if currency != baseCurrency:
-          accounts[baseCurrency].addTX(TX(-value, -value, args.start))
+          accounts[baseCurrency].addTX(TX(-value, -value, args.start, id_))
         # TODO: custom accounts init date
       else:
         exit('ERROR: Invalid base currency for account on line %d' % i)
@@ -396,9 +403,14 @@ for filename in accountsFiles:
 class CurrencyConverter:
   def __init__(self):
     self.conversions = {}
+    self.fromCurrencies = []
+    self.toCurrencies = []
 
   def _formatDate(self, date):
     return date[:-2] + "00" # ignore minutes
+
+  def currencies(self):
+    return self.fromCurrencies
 
   def canConvertOn(self, date, fromCurrency, toCurrency):
     date = self._formatDate(date)
@@ -420,6 +432,8 @@ class CurrencyConverter:
     currTo = entries[1]
     csym = currFrom + currTo
     self.conversions[csym] = {}
+    self.fromCurrencies.append(currFrom)
+    self.toCurrencies.append(currTo)
     #rsym = currTo + currFrom
     #ronversions[rsym] = {}
     i = 1
@@ -684,6 +698,12 @@ class FileReader:
     if tx and abs(tx.amount1) < threshold and abs(tx.amount2) < threshold: tx = None
     return tx
 
+currencyPriorities = {baseCurrency: 0, 'BTC': -10, 'EUR': -20, 'USD': -30, 'CHF': -40}
+plevel = min(list(currencyPriorities.values())) - 10
+for currency in currencyPairs.currencies():
+  if currency not in currencyPriorities:
+    currencyPriorities[currency] = plevel
+
 accountPrefixes = ['poloniex', 'kraken', 'bitstamp', 'gatecoin', 'localbitcoins', 'bitfinex', 'bittrex', 'cryptsy', 'btcsx', 'currencyfair']
 
 for filename in inputs:
@@ -712,45 +732,58 @@ for filename in inputs:
           exit('ERROR: Invalid fund exchange on %s line %d: %s %f <> %s %f' % (filename, ln, tx.curr1, tx.amount1, tx.curr2, tx.amount2) )
 
         # Process entry
-        curr1ERROR = False;
-        curr2ERROR = False;
-
         account1 = tx.account1
         account2 = tx.account2
 
-        if tx.curr1 == baseCurrency:
-          value1 = tx.amount1
-        else:
-          if currencyPairs.canConvertOn(tx.date, tx.curr1, baseCurrency):
-            value1 = currencyPairs.convert(tx.date, tx.curr1, baseCurrency, tx.amount1)
-            #print("DEBUG: conversion %s %f %s: %f %s = %f %s" % (tx.date, conversions[symb1][tx.date], symb1, tx.amount1, tx.curr1, value1, baseCurrency))
-          else:
-            curr1ERROR = True;
-          if not tx.isTransfer:
-            account1 = accountPrefix + account1
+        value1 = False;
+        value2 = False;
 
-        if tx.curr2 == baseCurrency:
-          value2 = tx.amount2
-        else:
-          if currencyPairs.canConvertOn(tx.date, tx.curr2, baseCurrency):
-            value2 = currencyPairs.convert(tx.date, tx.curr2, baseCurrency, tx.amount2)
-            #print("DEBUG: conversion %s %f %s: %f %s = %f %s" % (tx.date, conversions[symb2][tx.date], symb2, tx.amount2, tx.curr2, value2, baseCurrency))
+        # determine value
+        if tx.curr1 == tx.curr2:
+          if tx.curr1 == baseCurrency:
+            v1 = tx.amount1
+            v2 = tx.amount2
+          elif currencyPairs.canConvertOn(tx.date, tx.curr1, baseCurrency):
+            v1 = currencyPairs.convert(tx.date, tx.curr1, baseCurrency, tx.amount1)
+            v2 = currencyPairs.convert(tx.date, tx.curr2, baseCurrency, tx.amount2)
           else:
-            curr2ERROR = True;
-          if not tx.isTransfer:
-            account2 = accountPrefix + account2
+            exit('ERROR: Currency conversions for %s is not available on %s in %s at line %d' % (tx.curr1, tx.date, filename, ln))
 
-        if curr1ERROR and curr2ERROR:        
-          exit('ERROR: Currency conversions for neither %s nor %s are available on %s in %s at line %d' % (tx.curr1, tx.curr2, tx.date, filename, ln))
-        elif curr1ERROR:
-          value1 = -value2
-        elif curr2ERROR:
+          value1 = math.copysign(max(abs(v1), abs(v2)), tx.amount1)
+          value2 = -value1
+        else:
+          # determine which currency has higher priority
+          tcs = (tx.curr1, tx.curr2)
+          tas = (tx.amount1, tx.amount2)
+
+          if tx.curr1 not in currencyPriorities and tx.curr2 not in currencyPriorities: i = 1
+          elif tx.curr1 not in currencyPriorities: i = 2
+          elif tx.curr2 not in currencyPriorities: i = 1
+          else: i = (1, 2)[currencyPriorities[tx.curr1] < currencyPriorities[tx.curr2]]
+
+          if tcs[i - 1] == baseCurrency:
+            v = tas[i - 1]
+          elif currencyPairs.canConvertOn(tx.date, tcs[i - 1], baseCurrency):
+            v = currencyPairs.convert(tx.date, tcs[i - 1], baseCurrency, tas[i - 1])
+          else:
+            exit('ERROR: Currency conversions for priority currency %s is not available on %s in %s at line %d' % (tcs[i - 1], tx.date, filename, ln))
+
+          value1 = math.copysign(v, tas[0])
           value2 = -value1
 
-        if abs(value1) < 0.001 and abs(value2) < 0.001:
+        # ignore dust transactions
+        if abs(value1) < 0.001:
           continue
 
-        #print("DEBUG: {%s, %f, %f} & {%s, %f, %f} %s" % (account1, tx.amount1, value1, account2, tx.amount2, value2, ("", "-->")[int(tx.isTransfer)]))
+        # add account prefix
+        if not tx.isTransfer:
+          if tx.curr1 != baseCurrency:
+            account1 = accountPrefix + account1
+          if tx.curr2 != baseCurrency:
+            account2 = accountPrefix + account2
+
+        if (tx.curr1 == baseCurrency and tx.amount1 !=  value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
+          print("DEBUG: adding cost asymmetric tx on %s: [%s :: %f %s :: %f %s] -> [%s :: %f %s :: %f %s]" % (tx.date, account1, tx.amount1, tx.curr1, value1, baseCurrency, account2, tx.amount2, tx.curr2, value2, baseCurrency))
 
         if account1 not in accounts: 
           accounts[account1] = Account(account1, tx.curr1)
@@ -759,14 +792,16 @@ for filename in inputs:
           accounts[account2] = Account(account2, tx.curr2)
           print("DEBUG: creating account for %s" % account2)
 
+        id_ = createTXid(account1, account2, value1, tx.date)
+
         #print("DEBUG: {%s, %f, %f} & {%s, %f, %f}" % (account1, amount1, value1, account2, amount2, value2))
-        accounts[account1].addTX(TX(tx.amount1, value1, tx.date))
-        accounts[account2].addTX(TX(tx.amount2, value2, tx.date))
+        accounts[account1].addTX(TX(tx.amount1, value1, tx.date, id_))
+        accounts[account2].addTX(TX(tx.amount2, value2, tx.date, id_))
 
         if tx.curr1 != baseCurrency and tx.curr2 != baseCurrency:
           #print("DEBUG: {%s, %f, %f} & {%s, %f, %f}" % (baseCurrency, -value1, -value1, baseCurrency, -value2, -value2))
-          accounts[baseCurrency].addTX(TX(-value1, -value1, tx.date))
-          accounts[baseCurrency].addTX(TX(-value2, -value2, tx.date))
+          accounts[baseCurrency].addTX(TX(-value1, -value1, tx.date, id_))
+          accounts[baseCurrency].addTX(TX(-value2, -value2, tx.date, id_))
 
 
 print('\n')
