@@ -669,8 +669,7 @@ class FileReader:
           tx.flagAsTransfer()
         elif type_ == "Referral Success":
           cur1 = baseCurrency
-          if currencyPairs.canConvertOn(date, cur2, cur1): val1 = -currencyPairs.convert(date, cur2, cur1, val2)
-          else: exit("ERROR: failed to determine value of %f %s in %s on %s (line %d)" % (val2, cur2, cur1, date, ln))
+          val1 = 0
           tx = InputTX(date, cur1, val1, cur2, val2)
         else:
           exit("ERROR: unexpected type '%s' encountered in line %d" % (type_, ln))
