@@ -35,6 +35,7 @@ import csv
 
 os.environ['TZ'] = 'UTC' # workaround for no inverse of time.gmtime(t) 
 TOLERANCE = 1e-6
+FLOAT_ZERO = 1e-8
 
 parser = argparse.ArgumentParser()
 
@@ -138,26 +139,26 @@ class Account:
     self.txs = {} # all txs by date key
     self.ledger = [] # ordered list of transactions
     self.queue = [] # "bed and breakfast" queue 
-    self.balance = 0 # total foreign currency ongoing
-    self.profit = 0 # total profit in base currency
-    self.poolBalance = 0 # in foreign currency '_name'
-    self.poolCost = 0 # in base currency
-    self.chargeable = 0 # gains in base (on disposals while account above zero)
-    self.warning = 0
+    self.balance = 0.0 # total foreign currency ongoing
+    self.profit = 0.0 # total profit in base currency
+    self.poolBalance = 0.0 # in foreign currency '_name'
+    self.poolCost = 0.0 # in base currency
+    self.chargeable = 0.0 # gains in base (on disposals while account above zero)
+    self.warning = False
     self.output = FileWriter(_name + ".csv")
 
   def __str__(self):
     return '%s{balance: %f,   \tcost: %f, \tchargeable: %f}' % (self.name, self.balance, self.poolCost, self.chargeable)
 
   def poolRate(self):
-    if self.poolBalance == 0:
+    if abs(self.poolBalance) < FLOAT_ZERO:
       return 0.0
     else:
       return max(0.0, self.poolCost / self.poolBalance)
 
   def totalBetween(self, attrName, startDate, endDate):
     #print("DEBUG: %s.%s between %s and %s" % (attrName, self.name, startDate, endDate))
-    v = 0
+    v = 0.0
     for tx in self.ledger:
       if tx.date < startDate: continue
       elif tx.date > endDate: continue
@@ -184,13 +185,13 @@ class Account:
     return self.totalBetween('value', self.earliestDate, self.latestDate)
 
   def proceedsBetween(self, startDate, endDate):
-    n = 0
-    p = 0
+    n = 0.0
+    p = 0.0
     for tx in self.ledger:
       if tx.date < startDate: continue
       elif tx.date > endDate: continue
       #elif tx.date > endDate: break
-      elif tx.chargeable != 0:
+      elif abs(tx.chargeable) > FLOAT_ZERO:
         p += -tx.value
         n += 1
     return (p, n)
@@ -215,7 +216,7 @@ class Account:
     p = 0.0
     #print("DEBUG: adding TX{%f %s, %f %s) to Pool{%f %s, %f %s}" % (a, self.name, v, baseCurrency, self.poolBalance, self.name, self.poolCost, baseCurrency))
 
-    if a < 0 and self.poolBalance > 0:
+    if a < -FLOAT_ZERO and self.poolBalance > FLOAT_ZERO:
       # disposal from an account in credit
       # NB only the balance on the account counts as a chargeable disposal
       c = min(self.poolBalance, -a)
@@ -225,7 +226,7 @@ class Account:
       g = (v * c / a) - b
       p = g
       self.poolCost = (self.poolBalance + a) / self.poolBalance * self.poolCost
-    elif a > 0 and self.poolBalance < 0:
+    elif a > FLOAT_ZERO and self.poolBalance < -FLOAT_ZERO:
       c = min(-self.poolBalance, a)
       b = c * self.poolRate()
       p = (v * c / a) - b
@@ -234,47 +235,40 @@ class Account:
       self.poolCost += v
 
     _tx.addProfitAndChargeable(p, g)
-
     self.poolBalance += a
-    #print("DEBUG: now Pool{%f %s, %f %s}" % (self.poolBalance, self.name, self.poolCost, baseCurrency))
+    #print("%s, %s, %s, %s, %f, %f, %f, %f, %f, %f" % (_tx.id, _tx.date, ('buy', 'sell')[_tx.amount < 0.0], "pool", a, v, p, g, self.poolBalance, self.poolCost))
 
     # warn if in debt
-    if self.poolBalance < -1e-6 and self.warning == 0 and self.name != baseCurrency and abs(a) > 1e-6:
-      self.warning = 1
+    if self.poolBalance < -1e-6 and not self.warning and self.name != baseCurrency and abs(a) > TOLERANCE:
+      self.warning = True
       print('WARNING: disposal of unowned assets in "%s" account: poolBalance = %f, disposal = %f, date = %s' % (self.name, self.poolBalance, a, _tx.date))
 
   def processTX(self, _tx):
     self.ledger.append(_tx)
-    self.balance += _tx.amount
-    if _tx.amount >= 0:
-      # TODO: fix - should be adding to pool ONLY by clearQueueToDate ...
-      if self.poolBalance >= 0:
-        self.queue.append(_tx)
-      elif _tx.amount > abs(self.poolBalance):
-        p = _tx.adjust(self.poolBalance) - self.poolCost
-        _tx.addProfitAndChargeable(p, 0)
-        self.queue.append(_tx)
-        self.poolBalance = 0
-        self.poolCost = 0
-      else:
-        self.addTXtoPool(_tx)
+    if _tx.amount < -FLOAT_ZERO:
+      self.queue.append(_tx)
     else:
-      self.clearQueueToDate(_tx.date, 30)
-      isChargeable = int(self.balance >= 0)
+      isChargeable = int(self.balance > FLOAT_ZERO)
 
       # calculate profit; first in, last out
-      while len(self.queue) > 0 and self.queue[len(self.queue) - 1]._unusedAmount + _tx._unusedAmount <= 0:
+      while len(self.queue) > 0 and self.queue[len(self.queue) - 1]._unusedAmount + _tx._unusedAmount > FLOAT_ZERO:
         qtx = self.queue.pop()
         (a, v) = qtx.useUp()
         p = _tx.adjust(a) - v
-        _tx.addProfitAndChargeable(p, p * isChargeable)
+        qtx.addProfitAndChargeable(p, p * isChargeable)
+        #print("%s, %s, %s, %s, %f, %f, %f, %f,," % (qtx.id, qtx.date, ('buy', 'sell')[qtx.amount < 0.0], _tx.id, a, v, p, p * isChargeable))
         
       if len(self.queue) > 0:
+        qtx = self.queue[len(self.queue) - 1]
         (a, v) = _tx.useUp()
-        p = self.queue[len(self.queue) - 1].adjust(a) - v
-        _tx.addProfitAndChargeable(p, p * isChargeable)
+        p = qtx.adjust(a) - v
+        qtx.addProfitAndChargeable(p, p * isChargeable)
+        #print("%s, %s, %s, %s, %f, %f, %f, %f,," % (qtx.id, qtx.date, ('buy', 'sell')[qtx.amount < 0.0], _tx.id, a, v, p, p * isChargeable))
+
       else:
         self.addTXtoPool(_tx)
+
+    self.balance += _tx.amount
 
 
   def addTX(self, _tx):
@@ -289,9 +283,19 @@ class Account:
     self.earliestDate = dates[0]
     self.latestDate = dates[len(dates) - 1]
     for d in dates:
+      # match sells with buy within 30 days if available, otherwise section 104 pool
+      self.clearQueueToDate(d, 30)
+
+      # match sells with buys on same day if available, so add today's sells first
+      day_buys = []
       for tx in self.txs[d]:
+        if tx.amount < 0.0:
+          self.processTX(tx)
+        else:
+          day_buys.append(tx)
+
+      for tx in day_buys:
         self.processTX(tx)
-        #print(str(self))
 
     self.clearQueue()
 
@@ -331,18 +335,18 @@ class TX:
   def __init__(self, _a, _v, _d, _id):
     #print("DEBUG TX.__init__(%f, %f, %s)" % (_a, _v, _d))
 
-    self.profit = 0 # in base
-    self.chargeable = 0 # in base
+    self.profit = 0.0 # in base
+    self.chargeable = 0.0 # in base
     self.amount = _a # in foreign currency (negative is disposal)
     self.value = math.copysign(_v, _a) # in GBP (base should be same as amount)
     self._unusedAmount = self.amount
     self._unusedValue = self.value
     self.date = _d
     self.id = _id
-    if _a != 0:
+    if abs(_a) > FLOAT_ZERO:
       self.rate = _v / _a
     else:
-      self.rate = 0
+      self.rate = 0.0
 
   def __str__(self):
     datestr = re.sub('-', '/', self.date[:10]) + ' ' + re.sub('-', ':', self.date[11:16])
@@ -354,9 +358,11 @@ class TX:
     #if _c > _p + TOLERANCE: print("ARGH: %s :: profit: %f -> %f; chargeable: %f -> %f" % (self.date, self.profit - _p, self.profit, self.chargeable - _c, self.chargeable))
 
   def adjust(self, _a):
-    if self._unusedAmount * _a > 0:
+    if abs(_a) <= FLOAT_ZERO:
+      return 0.0
+    if self._unusedAmount * _a > 0.0:
       exit("ERROR: TX.adjust: attempt to add further to a tx (tx amount = %f; adjust amount = %f)" % (self._unusedAmount, _a))
-    if abs(_a) > abs(self._unusedAmount):
+    if abs(_a) - abs(self._unusedAmount) > FLOAT_ZERO:
       exit("ERROR: TX.adjust: attempt to adjust by more than available (tx amount = %f; adjust amount = %f)" % (self._unusedAmount, _a))
     self._unusedAmount += _a
     v = self._unusedValue
@@ -366,8 +372,8 @@ class TX:
   def useUp(self):
     a = self._unusedAmount
     v = self._unusedValue
-    self._unusedAmount = 0
-    self._unusedValue = 0
+    self._unusedAmount = 0.0
+    self._unusedValue = 0.0
     return (a, v)
 
 def createTXid(acc1, acc2, val, date):
@@ -669,7 +675,7 @@ class FileReader:
           tx.flagAsTransfer()
         elif type_ == "Referral Success":
           cur1 = baseCurrency
-          val1 = 0
+          val1 = 0.0
           tx = InputTX(date, cur1, val1, cur2, val2)
         else:
           exit("ERROR: unexpected type '%s' encountered in line %d" % (type_, ln))
@@ -779,7 +785,7 @@ for filename in inputs:
           value2 = -value1
 
         # ignore dust transactions
-        if abs(value1) < 0.001:
+        if abs(value1) < 0.001 and abs(tx.amount1) < 1e-8 and abs(tx.amount2) < 1e-8:
           continue
 
         # add account prefix
@@ -819,11 +825,11 @@ ml += 1
 
 print((" " * (ml - 7)) + "Account, \tBalance, \tCost, \t\tProfit, \tProceeds, \tChargeable")
 numberDisposals = 0
-totalProceeds = 0
-finalTotalCost = 0
-finalTotalGains = 0
-finalTotalProfit = 0
-initialTotalCost = 0
+totalProceeds = 0.0
+finalTotalCost = 0.0
+finalTotalGains = 0.0
+finalTotalProfit = 0.0
+initialTotalCost = 0.0
 for curr in accounts.keys():
   a = accounts[curr]
   a.process()
