@@ -53,7 +53,7 @@ for filename in inputs:
       toCurrencies[2] = entries.group(7)
       prices[2] = float(entries.group(8))
 
-      date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%Y-%m-%d %H:%M"))
+      date = re.sub('[ :]', '-', timestr)
 
       if any(p == 0 for p in prices):
         print("WARNING: zero price detected on line %d. Stopping" % ln)
