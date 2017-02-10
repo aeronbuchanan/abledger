@@ -3,8 +3,8 @@
 # Download currency data from cryptocompare
 
 t=`date --utc +"%m/%d/%Y"`
-s=`date --date $t" 18:00 UTC" +"%s"`
-e=`date --date "01/01/2014 18:00 UTC" +"%s"`
+s=`date --date $t" 12:00 UTC" +"%s"`
+e=`date --date "01/01/2014 12:00 UTC" +"%s"`
 d=86400
 
 from=ETC
