@@ -216,7 +216,7 @@ class ConvPrinter:
           deviation = v - median
           threshold = 0.08
           if abs(deviation) > threshold * median:
-            sign = deviation / abs(deviation)
+            sign = math.copysign(1, deviation)
             v = median + sign * threshold * median
           d = self.dBuffer.pop(0)
           self._print(d, v)
@@ -318,7 +318,7 @@ for t in dates:
   v = engine.compute()
   convFile.post(t, v)
 
-
+convFile.flush()
 
 
 
