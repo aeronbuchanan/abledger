@@ -29,7 +29,7 @@ import math
 os.environ['TZ'] = 'UTC' # workaround for no inverse of time.gmtime(t) 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--input", help="file(s) to process", default="")
+parser.add_argument("-i", "--input", help="file(s) to process", nargs="+", default="")
 parser.add_argument("-o", "--output", help="file to write to", default="out.csv")
 parser.add_argument("-s", "--start", help="start date (YYYY-MM-DD-HH-MM)", default="1000-01-01-00-00")
 parser.add_argument("-e", "--end", help="end date (YYYY-MM-DD-HH-MM)", default="2099-12-31-23-59")
@@ -43,7 +43,10 @@ args = parser.parse_args()
 prices = {}
 dates = []
 
-inputs = glob.glob(args.input)
+inputs = []
+for i in args.input:
+  for ii in glob.glob(i):
+    inputs.append(ii)
 
 weights = args.weights.rstrip().lstrip()
 if weights == '':
