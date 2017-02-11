@@ -9,14 +9,17 @@
 ./conversions.py -i conversions/workdir/googleUSDGBP.dat -o conversions/USDGBP.csv -f USD -t GBP -s 2014-01-01-00-00 
 ./conversions.py -i conversions/workdir/googleBTCGBP.dat -o conversions/workdir/BTCGBP_ggl.csv -f BTC -t GBP -s 2014-01-01-00-00 
 ./conversions.py -i conversions/workdir/localbtcGBP.raw -o conversions/workdir/BTCGBP_lbc.csv -f BTC -t GBP -s 2014-01-01-00-00 
-./conversions.py -i "conversions/workdir/market.*" -o conversions/workdir/marketsETHBTC.csv -f ETH -t BTC -s 2014-01-01-00-00
+./conversions.py -i conversions/workdir/ccETHBTC.csv -o conversions/workdir/ccETHBTC_filled.csv -f ETH -t BTC -s 2014-01-01-00-00
+./conversions.py -i conversions/workdir/ccETHBTC_filled.csv "conversions/workdir/market.*" -o conversions/workdir/ETHBTC.csv -f ETH -t BTC -s 2014-01-01-00-00
+./conversions.py -i conversions/workdir/ccETCBTC.csv -o conversions/workdir/ccETCBTC_filled.csv -f ETC -t BTC -s 2014-01-01-00-00
 
 ./combine.py -1 conversions/workdir/BTCEUR.csv -2 conversions/EURGBP.csv -o conversions/workdir/BTCGBP_eur.csv
 ./combine.py -1 conversions/workdir/BTCUSD.csv -2 conversions/USDGBP.csv -o conversions/workdir/BTCGBP_usd.csv
 ./conversions.py -i 'conversions/workdir/BTCGBP_*.csv' -o conversions/BTCGBP.csv -f BTC -t GBP -c robust-mean -w "0.1,0.2,1,2"
 
-./combine.py -1 conversions/workdir/marketsETHBTC.csv -2 conversions/BTCGBP.csv -o conversions/ETHGBP.csv
+./combine.py -1 conversions/workdir/ETHBTC.csv -2 conversions/BTCGBP.csv -o conversions/ETHGBP.csv
 ./combine.py -1 conversions/workdir/XMRBTC.csv -2 conversions/BTCGBP.csv -o conversions/XMRGBP.csv
+./combine.py -1 conversions/workdir/ccETCBTC_filled.csv -2 conversions/BTCGBP.csv -o conversions/ETCGBP.csv
 
 ./conversions.py -i conversions/workdir/AUDGBP.csv -o conversions/AUDGBP.csv -f AUD -t GBP
 ./conversions.py -i conversions/workdir/CHFGBP.csv -o conversions/CHFGBP.csv -f CHF -t GBP
