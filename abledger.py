@@ -139,7 +139,7 @@ class Account:
     self.txs = {} # all txs by date key
     self.ledger = [] # ordered list of transactions
     self.queue = [] # "bed and breakfast" queue 
-    self.balance = 0.0 # total foreign currency ongoing
+    self.balance = 0.0 # ongoing balance in foreign currency
     self.profit = 0.0 # total profit in base currency
     self.poolBalance = 0.0 # in foreign currency '_name'
     self.poolCost = 0.0 # in base currency
@@ -148,7 +148,7 @@ class Account:
     self.output = FileWriter(_name + ".csv")
 
   def __str__(self):
-    return '%s{balance: %f,   \tcost: %f, \tchargeable: %f}' % (self.name, self.balance, self.poolCost, self.chargeable)
+    return '%s {balance: %f,   \tcost: %f, \tchargeable: %f}' % (self.name, self.totalBalance(), self.poolCost, self.chargeable)
 
   def poolRate(self):
     if abs(self.poolBalance) < FLOAT_ZERO:
@@ -218,7 +218,6 @@ class Account:
 
     if a < -FLOAT_ZERO and self.poolBalance > FLOAT_ZERO:
       # disposal from an account in credit
-      # NB only the balance on the account counts as a chargeable disposal
       c = min(self.poolBalance, -a)
       # cost basis of this amount based on aggregated acquisition
       b = c * self.poolRate()
@@ -234,6 +233,9 @@ class Account:
     else:
       self.poolCost += v
 
+    if (abs(g) <= FLOAT_ZERO and _tx.chargeableMultiplier > FLOAT_ZERO) or (abs(g) > FLOAT_ZERO and _tx.chargeableMultiplier <= FLOAT_ZERO):
+      print("ERROR: pool gains = %f, but chargeable multiplier = %f" % (g, _tx.chargeableMultiplier))
+
     _tx.addProfitAndChargeable(p, g)
     self.poolBalance += a
     #print("%s, %s, %s, %s, %f, %f, %f, %f, %f, %f" % (_tx.id, _tx.date, ('buy', 'sell')[_tx.amount < 0.0], "pool", a, v, p, g, self.poolBalance, self.poolCost))
@@ -246,24 +248,34 @@ class Account:
   def processTX(self, _tx):
     self.ledger.append(_tx)
     if _tx.amount < -FLOAT_ZERO:
+      # set chargeable status
+      # only the balance on the account counts as a chargeable disposal
+      if self.balance < -FLOAT_ZERO:
+        _tx.chargeableMultiplier = 0.0
+      elif self.balance + _tx.amount < -FLOAT_ZERO:
+        _tx.chargeableMultiplier = max(0, self.balance / abs(_tx.amount))
+        print("DEBUG: setting chargeable = %f from balance = %f and amount = %f" % (_tx.chargeableMultiplier, self.balance, _tx.amount))
+      else:
+        _tx.chargeableMultiplier = 1.0
       self.queue.append(_tx)
     else:
-      isChargeable = int(self.balance > FLOAT_ZERO)
+      # deposits not chargeable
+      _tx.chargeable = 0.0
 
       # calculate profit; first in, last out
       while len(self.queue) > 0 and self.queue[len(self.queue) - 1]._unusedAmount + _tx._unusedAmount > FLOAT_ZERO:
         qtx = self.queue.pop()
         (a, v) = qtx.useUp()
         p = _tx.adjust(a) - v
-        qtx.addProfitAndChargeable(p, p * isChargeable)
-        #print("%s, %s, %s, %s, %f, %f, %f, %f,," % (qtx.id, qtx.date, ('buy', 'sell')[qtx.amount < 0.0], _tx.id, a, v, p, p * isChargeable))
+        g = p * qtx.chargeableMultiplier
+        qtx.addProfitAndChargeable(p, g)
         
       if len(self.queue) > 0:
         qtx = self.queue[len(self.queue) - 1]
         (a, v) = _tx.useUp()
         p = qtx.adjust(a) - v
-        qtx.addProfitAndChargeable(p, p * isChargeable)
-        #print("%s, %s, %s, %s, %f, %f, %f, %f,," % (qtx.id, qtx.date, ('buy', 'sell')[qtx.amount < 0.0], _tx.id, a, v, p, p * isChargeable))
+        g = p * qtx.chargeableMultiplier
+        qtx.addProfitAndChargeable(p, g)
 
       else:
         self.addTXtoPool(_tx)
@@ -343,6 +355,7 @@ class TX:
     self._unusedValue = self.value
     self.date = _d
     self.id = _id
+    self.chargeableMultiplier = float(_a < 0.0) # depends also on account balance when tx is executed
     if abs(_a) > FLOAT_ZERO:
       self.rate = _v / _a
     else:
