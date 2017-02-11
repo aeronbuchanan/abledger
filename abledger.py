@@ -226,15 +226,13 @@ class Account:
       p = g
       self.poolCost = (self.poolBalance + a) / self.poolBalance * self.poolCost
     elif a > FLOAT_ZERO and self.poolBalance < -FLOAT_ZERO:
+      # deposit on account in debt
       c = min(-self.poolBalance, a)
       b = c * self.poolRate()
       p = (v * c / a) - b
       self.poolCost = (self.poolBalance + a) / self.poolBalance * self.poolCost
     else:
       self.poolCost += v
-
-    if (abs(g) <= FLOAT_ZERO and _tx.chargeableMultiplier > FLOAT_ZERO) or (abs(g) > FLOAT_ZERO and _tx.chargeableMultiplier <= FLOAT_ZERO):
-      print("ERROR: pool gains = %f, but chargeable multiplier = %f" % (g, _tx.chargeableMultiplier))
 
     _tx.addProfitAndChargeable(p, g)
     self.poolBalance += a
@@ -250,13 +248,12 @@ class Account:
     if _tx.amount < -FLOAT_ZERO:
       # set chargeable status
       # only the balance on the account counts as a chargeable disposal
-      if self.balance < -FLOAT_ZERO:
-        _tx.chargeableMultiplier = 0.0
-      elif self.balance + _tx.amount < -FLOAT_ZERO:
-        _tx.chargeableMultiplier = max(0, self.balance / abs(_tx.amount))
-        print("DEBUG: setting chargeable = %f from balance = %f and amount = %f" % (_tx.chargeableMultiplier, self.balance, _tx.amount))
-      else:
-        _tx.chargeableMultiplier = 1.0
+      #if self.balance < -FLOAT_ZERO:
+      #  _tx.chargeableMultiplier = 0.0
+      #elif self.balance + _tx.amount < -FLOAT_ZERO:
+      #  _tx.chargeableMultiplier = max(0, self.balance / abs(_tx.amount))
+      #else:
+      _tx.chargeableMultiplier = 1.0
       self.queue.append(_tx)
     else:
       # deposits not chargeable
