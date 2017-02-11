@@ -2,7 +2,7 @@
 #
 # Download currency data from kraken
 
-e=`date --date "01/01/2014 18:00 UTC" +"%s"`
+e=`date --utc --date "01/01/2014 00:00 UTC" +"%s"`
 f=krakenXETHXXBT.json
 
 mv $f $f.bak
