@@ -18,7 +18,7 @@ TOLERANCE = 1e-6
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-d', '--directory', help='dir for csv files to read', default='/home/aeron/Documents/Admin/Consensus Platform Trading/Trading Logs/Kraken/')
+parser.add_argument('-d', '--directory', help='dir for csv files to read', default='/home/aeron/Documents/Admin/Trading/Logs/Kraken/')
 
 args = parser.parse_args()
 

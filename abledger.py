@@ -257,7 +257,7 @@ class Account:
       self.queue.append(_tx)
     else:
       # deposits not chargeable
-      _tx.chargeable = 0.0
+      _tx.chargeableMultiplier = 0.0
 
       # calculate profit; first in, last out
       while len(self.queue) > 0 and self.queue[len(self.queue) - 1]._unusedAmount + _tx._unusedAmount > FLOAT_ZERO:
