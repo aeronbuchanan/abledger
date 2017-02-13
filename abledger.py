@@ -88,14 +88,14 @@ def numberDaysBetween(_start, _end):
       exit('ERROR: numberDaysBetween - bad month(s): start = %s; end = %s' % (_start, _end))
     elif month1 > month2:
       exit('WARNING: numberDaysBetween - bad month order: start = %s; end = %s' % (_start, _end))
-      return -numberDaysBetween(_end, _start)
+      #return -numberDaysBetween(_end, _start)
     elif day1 > monthLengths[month1] or day2 > monthLengths[month2]:
       exit('ERROR: numberDaysBetween - bad day(s): start = %s; end = %s' % (_start, _end))
     elif month1 < month2:
       return (monthLengths[month1] - day1) + sum(monthLengths[month1 + 1:month2]) + (day2)
     elif day1 > day2:
       exit('WARNING: numberDaysBetween - bad day order: start = %s; end = %s' % (_start, _end))
-      return -numberDaysBetween(_end, _start)
+      #return -numberDaysBetween(_end, _start)
     else:
       return day2 - day1
 
@@ -772,6 +772,10 @@ for filename in inputs:
           else:
             exit('ERROR: Currency conversions for %s is not available on %s in %s at line %d' % (tx.curr1, tx.date, filename, ln))
 
+          # TODO: make explicit value discrepancies 
+          if tx.curr1 != baseCurrency and abs(v1) != abs(v2):
+            print('WARNING: mismatched transaction values: %f vs %f on %s (line %d)' % (v1, v2, tx.date, ln))
+            if v1 == 0 or v2 == 0: print('SUGGESTION: set the currency of the zero value to %s' % baseCurrency)
           value1 = math.copysign(max(abs(v1), abs(v2)), tx.amount1)
           value2 = -value1
         else:
@@ -803,7 +807,7 @@ for filename in inputs:
           account1 = accountPrefix + account1
           account2 = accountPrefix + account2
 
-        if (tx.curr1 == baseCurrency and tx.amount1 !=  value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
+        if (tx.curr1 == baseCurrency and tx.amount1 != value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
           print("DEBUG: adding cost asymmetric tx on %s: [%s :: %f %s :: %f %s] -> [%s :: %f %s :: %f %s]" % (tx.date, account1, tx.amount1, tx.curr1, value1, baseCurrency, account2, tx.amount2, tx.curr2, value2, baseCurrency))
 
         if account1 not in accounts: 
