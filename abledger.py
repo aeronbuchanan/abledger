@@ -48,6 +48,7 @@ parser.add_argument("-a", "--accounts", help="pre-ledger account states", defaul
 
 # TODO: base currency check / switching
 # TODO: allow "unchargeable" flag for transactions that were for personal use (e.g. pizza purchase)
+# TODO: improve fee (zero value tx) handling
 
 args = parser.parse_args()
 print(args) # DEBUG
@@ -386,8 +387,8 @@ class TX:
     self._unusedValue = 0.0
     return (a, v)
 
-def createTXid(acc1, acc2, val, date):
-  s = str(abs(hash((acc1, acc2, val, date))))
+def createTXid(acc1, acc2, val, date, salt):
+  s = str(abs(hash((acc1, acc2, val, date, salt))))
   h = ""
   for i in range(0, math.floor(len(s) / 2)):
     n = int(s[i:i + 2]) + 45
@@ -415,7 +416,7 @@ for filename in accountsFiles:
         if currency not in accounts:
           accounts[currency] = Account(name, currency)
         # add to ledger(s)
-        id_ = createTXid(currency, baseCurrency, value, args.start)
+        id_ = createTXid(currency, baseCurrency, value, args.start, filename)
         accounts[currency].addTX(TX(amount, value, args.start, id_))
         if currency != baseCurrency:
           accounts[baseCurrency].addTX(TX(-value, -value, args.start, id_))
@@ -490,6 +491,8 @@ class InputTX:
   def flagAsTransfer(self):
     self.isTransfer = True
 
+  def __str__(self):
+    return "<%s> %f %s -> %f %s %s%s %s" % (self.account1, self.amount1, self.curr1, self.amount2, self.curr2, ('<' + self.account2 + '>', '')[self.account2 == self.account1], ('', '*')[self.isTransfer], self.date)
 
 class FileReader:
   def __init__(self, _firstline):
@@ -721,6 +724,111 @@ class FileReader:
     if tx and abs(tx.amount1) < threshold and abs(tx.amount2) < threshold: tx = None
     return tx
 
+
+class transferHandler:
+  def __init__(self):
+    self.transfers = {}
+    self.unmatchedByDate = {}
+    self.matched = {}
+    self.fingerprints = {}
+    self.sourcefiles = {}
+
+  def fingerprint(self, _tx):
+    # create (canonical) fingerprint
+    acc1 = _tx.account1
+    acc2 = _tx.account2
+    amnt = round(_tx.amount2, 5)
+    if amnt < 0:
+      amnt = abs(amnt)
+      acc1 = tx.account2
+      acc2 = tx.account1
+    fingerprint = "%f %s -> %s" % (amnt, acc1, acc2)
+    return fingerprint
+
+  def add(self, _tx, _id, _filename):
+    self.transfers[_id] = _tx
+    self.sourcefiles[_id] = _filename
+    # set up 'fuzzy' date matching lookup:
+    # round to day and allow one calendar day either side to match
+    t = float(time.strftime("%s", time.strptime(_tx.date, "%Y-%m-%d-%H-%M")))
+    ts = [
+      time.strftime("%Y-%m-%d", time.gmtime(t)),
+      time.strftime("%Y-%m-%d", time.gmtime(t - 60*60*24)),
+      time.strftime("%Y-%m-%d", time.gmtime(t + 60*60*24))
+    ]
+    fingerprint = self.fingerprint(_tx)
+    self.fingerprints[_id] = fingerprint
+    found = False
+    for t in ts:
+      if t in self.unmatchedByDate:
+        for pid in self.unmatchedByDate[t]:
+          p = self.transfers[pid]
+          if fingerprint == self.fingerprints[pid] and _filename != self.sourcefiles[pid]:
+            self.unmatchedByDate[t].remove(pid)
+            self.matched[pid] = _id
+            self.matched[_id] = pid
+            found = True
+            break
+      if found: break
+    if not found:
+      if ts[0] not in self.unmatchedByDate:
+        self.unmatchedByDate[ts[0]] = []
+      self.unmatchedByDate[ts[0]].append(_id)
+
+  def isMatched(self, _id):
+    return _id in self.matched
+
+  def matchIdOf(self, _id):
+    if self.isMatched(_id):
+      return self.matched[_id]
+    else:
+      return None
+
+  def matchOf(self, _id):
+    if self.isMatched(_id):
+      return self.transfers[self.matchIdOf(_id)]
+    else:
+      return None
+
+  def fingerprintOf(self, _id):
+    if _id in self.transfers:
+      return self.fingerprints[_id]
+    else:
+      return None
+
+  def sourceOf(self, _id):
+    if _id in self.transfers:
+      return self.sourcefiles[_id]
+    else:
+      return None
+
+  def strOf(self, _id):
+    return "%s (%s; %s)" % (self.fingerprints[_id], _id, self.sourcefiles[_id])
+
+  def __str__(self):
+    data = {}
+    for id_ in self.transfers:
+      tx = self.transfers[id_]
+      if tx.date not in data: data[tx.date] = []
+      s = self.strOf(id_)
+      if id_ in self.matched:
+        mid = self.matched[id_]
+        s += " matched with " + self.strOf(mid)
+      else:
+        s = "UNMATCHED: " + s
+      data[tx.date].append(s)
+
+    dates = list(data.keys())
+    dates.sort()
+
+    ss = "Transfers:\n"
+    for d in dates:
+      for f in data[d]:
+        ss += d + " " + f + "\n"
+    return ss
+
+transfers = transferHandler()
+
 currencyPriorities = {baseCurrency: 0, 'BTC': -10, 'EUR': -20, 'USD': -30, 'CHF': -40}
 plevel = min(list(currencyPriorities.values())) - 10
 for currency in currencyPairs.currencies():
@@ -772,7 +880,6 @@ for filename in inputs:
           else:
             exit('ERROR: Currency conversions for %s is not available on %s in %s at line %d' % (tx.curr1, tx.date, filename, ln))
 
-          # TODO: make explicit value discrepancies 
           if tx.curr1 != baseCurrency and abs(v1) != abs(v2):
             print('WARNING: mismatched transaction values: %f vs %f on %s (line %d)' % (v1, v2, tx.date, ln))
             if v1 == 0 or v2 == 0: print('SUGGESTION: set the currency of the zero value to %s' % baseCurrency)
@@ -807,8 +914,15 @@ for filename in inputs:
           account1 = accountPrefix + account1
           account2 = accountPrefix + account2
 
-        if (tx.curr1 == baseCurrency and tx.amount1 != value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
-          print("DEBUG: adding cost asymmetric tx on %s: [%s :: %f %s :: %f %s] -> [%s :: %f %s :: %f %s]" % (tx.date, account1, tx.amount1, tx.curr1, value1, baseCurrency, account2, tx.amount2, tx.curr2, value2, baseCurrency))
+        id_ = createTXid(account1, account2, value1, tx.date, filename + str(ln))
+
+        # skip transfer seen from the other side
+        if tx.isTransfer:
+          transfers.add(tx, id_, filename)
+          if transfers.isMatched(id_):
+            #mid = transfers.matchIdOf(id_)
+            #print("DEBUG: ignoring transfer %s, matched to %s, (line %d)" % (transfers.strOf(id_), transfers.strOf(mid), ln))
+            continue
 
         if account1 not in accounts: 
           accounts[account1] = Account(account1, tx.curr1)
@@ -817,7 +931,8 @@ for filename in inputs:
           accounts[account2] = Account(account2, tx.curr2)
           print("DEBUG: creating account for %s" % account2)
 
-        id_ = createTXid(account1, account2, value1, tx.date)
+        if (tx.curr1 == baseCurrency and tx.amount1 != value1) or (tx.curr2 == baseCurrency and tx.amount2 != value2):
+          print("DEBUG: adding cost asymmetric tx on %s: [%s :: %f %s :: %f %s] -> [%s :: %f %s :: %f %s]" % (tx.date, account1, tx.amount1, tx.curr1, value1, baseCurrency, account2, tx.amount2, tx.curr2, value2, baseCurrency))
 
         #print("DEBUG: {%s, %f, %f} & {%s, %f, %f}" % (account1, amount1, value1, account2, amount2, value2))
         accounts[account1].addTX(TX(tx.amount1, value1, tx.date, id_))
@@ -869,5 +984,7 @@ print("Final:\n  Cost = %f %s\n  Profit = %f %s\n  Proceeds = %f %s\n  Chargeabl
 
 error = abs(finalTotalCost - initialTotalCost)
 print("Check:\n  %f (%s)\n" % (error, ("FAILED", "OK")[error < 0.01]) )
+
+print(str(transfers))
 
 
