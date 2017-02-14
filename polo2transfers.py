@@ -41,7 +41,14 @@ reCheckCOMPLETE = re.compile('COMPLETE')
 output = open(args.directory + 'poloniex.transfers.csv', 'w')
 output.write("Date, Base Currency, Value, Trade Currency, Amount, Transfer Info\n")
 
-def writeTransfers(inputfile, outputFormat):
+# TODO: more accurate fee schedule
+fees = {
+  'BTC': 0.0001,
+  'XMR': 0.01,
+  'ETH': 0.01
+}
+
+def writeTransfers(inputfile, outputFormat, applyFees):
   with open(args.directory + inputfile) as f:
     ln = 0
     for line in f:
@@ -58,10 +65,18 @@ def writeTransfers(inputfile, outputFormat):
         if entries:
           (timestr, currency, amount, addre, status) = entries
           date = time.strftime('%Y-%m-%d-%H-00', time.strptime(timestr, '%Y-%m-%d %H:%M:%S'))
+          amount = float(amount)
+
+          # fees on withdrawals
+          if applyFees:
+            FEE = fees[currency]
+            amount -= FEE
+            output.write("%s, %s, %f, %s, %f,\n" % (date, 'GBP',  0.0, currency, -FEE))
+
           output.write(outputFormat % (date, currency, amount, currency, amount))
 
-writeTransfers('depositHistory.csv', "%s, %s, -%s, %s, %s, ->poloniex\n")
-writeTransfers('withdrawalHistory.csv', "%s, %s, -%s, %s, %s, poloniex->\n")
+writeTransfers('depositHistory.csv', "%s, %s, -%f, %s, %f, ->poloniex\n", False)
+writeTransfers('withdrawalHistory.csv', "%s, %s, -%f, %s, %f, poloniex->\n", True)
 
 output.close()
 
