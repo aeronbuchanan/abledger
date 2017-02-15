@@ -829,13 +829,15 @@ class transferHandler:
 
 transfers = transferHandler()
 
+# TODO: make this list a command line input or something
 currencyPriorities = {baseCurrency: 0, 'BTC': -10, 'EUR': -20, 'USD': -30, 'CHF': -40}
 plevel = min(list(currencyPriorities.values())) - 10
 for currency in currencyPairs.currencies():
   if currency not in currencyPriorities:
     currencyPriorities[currency] = plevel
 
-accountPrefixes = ['poloniex', 'kraken', 'bitstamp', 'gatecoin', 'localbitcoins', 'bitfinex', 'bittrex', 'cryptsy', 'btcsx', 'currencyfair']
+# TODO: make this list a command line input or something
+accountPrefixes = ['poloniex', 'kraken', 'bitstamp', 'gatecoin', 'localbitcoins', 'bitfinex', 'bittrex', 'cryptsy', 'btcsx', 'currencyfair', 'hsbc']
 
 for filename in inputs:
   print("DEBUG: reading ledger file %s" % filename)
@@ -985,6 +987,9 @@ print("Final:\n  Cost = %f %s\n  Profit = %f %s\n  Proceeds = %f %s\n  Chargeabl
 error = abs(finalTotalCost - initialTotalCost)
 print("Check:\n  %f (%s)\n" % (error, ("FAILED", "OK")[error < 0.01]) )
 
-print(str(transfers))
+transferdatafile = open('output/transfers.txt', 'w')
+transferdatafile.write(str(transfers))
+transferdatafile.close()
+
 
 
