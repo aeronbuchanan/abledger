@@ -713,6 +713,33 @@ class FileReader:
 
         return InputTX(date, cur1, val1, cur2, val2)
 
+    elif firstline == '﻿"Closed Date","Opened Date","Market","Type","Bid/Ask","Units Filled","Units Total","Actual Rate","Cost / Proceeds"':
+      # bittrex trades
+      def parseline(line, ln):
+        entries = extractCSVs(line, 9, ln)
+        if len(entries) == 0:
+          return None
+        (timestr, opentimestr, currencies, type_, quoterate, amount, ordertotal, rate, cost) = entries
+        date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%m/%d/%Y %I:%M:%S %p")) # 09/29/2016 02:16:36 AM
+        (cur1, cur2) = currencies.split("-")
+        val1 = float(cost)
+        val2 = float(amount)
+
+        return InputTX(date, cur1, val1, cur2, val2)
+
+    elif firstline == '#,Pair,Amount,Price,Date':
+      # bitfinex trades
+      def parseline(line, ln):
+        entries = extractCSVs(line, 5, ln)
+        if len(entries) == 0:
+          return None
+        (id_, currencies, amount, rate, timestr) = entries
+        date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%Y-%m-%d %H:%M:%S")) # 2016-01-08 20:02:45
+        cur1 = currencies[:3]
+        cur2 = currencies[-3:]
+        val1 = float(amount)
+        val2 = float(amount) * float(rate)
+
     else:
       exit("ERROR: Unknown file format with first line '" + firstline + "'")
 
