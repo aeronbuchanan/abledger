@@ -738,7 +738,9 @@ class FileReader:
         cur1 = currencies[:3]
         cur2 = currencies[-3:]
         val1 = float(amount)
-        val2 = float(amount) * float(rate)
+        val2 = -float(amount) * float(rate)
+
+        return InputTX(date, cur1, val1, cur2, val2)
 
     else:
       exit("ERROR: Unknown file format with first line '" + firstline + "'")
