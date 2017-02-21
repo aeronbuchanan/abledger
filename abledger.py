@@ -742,6 +742,60 @@ class FileReader:
 
         return InputTX(date, cur1, val1, cur2, val2)
 
+    elif firstline == 'Currency,Description,Amount,Balance,Date':
+      # bitfinex ledger
+      def parseline(line, ln):
+        entries = extractCSVs(line, 5, ln)
+        if len(entries) == 0:
+          return None
+        (currency, desc, amount, balance, timestr) = entries
+        date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%Y-%m-%d %H:%M:%S")) # 2016-01-08 20:02:45
+        cur1 = 'GBP'
+        cur2 = currency
+        val1 = 0.0
+        val2 = float(amount)
+
+        if re.match('^Transfer', desc):
+          tx = None
+        elif re.search('Deposit', desc) != None or re.search('Withdrawal', desc) != None:
+          cur1 = cur2
+          val1 = -val2
+          tx = InputTX(date, cur1, val1, cur2, val2)
+          tx.account2 = 'bitfinex' + cur2
+          tx.flagAsTransfer()
+        elif (re.match('^Extraordinary', desc) != None or 
+              re.match('^Trading fee', desc) != None or 
+              re.match('^Settlement', desc) != None or 
+              re.match('^Adjustment', desc) != None or 
+              re.match('^Position', desc) != None or 
+              re.match('^Exchange', desc) != None or
+              re.match('^BFX ', desc) != None):
+          tx = InputTX(date, cur1, val1, cur2, val2)
+        else:
+          exit('ERROR: unknown ledger description \'%s\' reading bitfinex report file on line %d' % (desc, ln))
+
+        # check
+        if re.match('^Exchange', desc):
+          m = re.match('^Exchange (\S+) (\w{3}) for (\w{3}) @ (\S+) on', desc)
+          if m == None:
+            exit("ERROR: expecting '%s' but got '%s' on line %d" % ('^Exchange (\S+) (\w{3}) for (\w{3}) @ (\S+) on', desc, ln))
+          (a1, c1, c2, rate) = m.groups()
+          if c1 == currency:
+            if abs(abs(float(a1)) - abs(val2)) > TOLERANCE:
+              exit("ERROR: ledger amount %f doesn't match amount %f in exchange entry description '%s' on line %d" % (val2, a1, desc, ln))
+            cur1 = c2
+            val1 = -val2 * float(rate)
+          elif c2 == currency:
+            cur1 = c1
+            val1 = -math.copysign(float(a1), val2)
+            val2check = -val1 * float(rate)
+            if abs(val2 - val2check) > TOLERANCE:
+              exit("ERROR: ledger amount %f doesn't match calculated amount %f in exchange entry description '%s' on line %d" % (val2, val2check, desc, ln))
+          else:
+            exit("ERROR: couldn't find ledger currency '%s' in exchange entry description '%s' -> '%s' & '%s' on line %d" %s (currency, desc, c1, c2, ln))
+
+        return tx
+
     else:
       exit("ERROR: Unknown file format with first line '" + firstline + "'")
 
