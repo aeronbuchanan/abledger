@@ -603,15 +603,15 @@ class FileReader:
         if category == "Market":
           (value, cur2) = value.split(" ")
           val2 = float(value)
+          if type_ == "Sell": val1 *= -1
+          elif type_ == "Buy": val2 *= -1
+          else: exit("UNEXPECTED BITSTAMP TYPE APPEARED ('%s' on line %d)!" % (type_, ln))
+
           if fee != "":
             (fee, fcur) = fee.split(" ")
             if fcur == cur1: val1 -= float(fee)
             elif fcur == cur2: val2 -= float(fee)
             else: exit("UNEXPECTED BITSTAMP FEE CURRENCY ('%s' on line %d)!" % (fcur, ln))
-
-          if type_ == "Sell": val1 *= -1
-          elif type_ == "Buy": val2 *= -1
-          else: exit("UNEXPECTED BITSTAMP TYPE APPEARED ('%s' on line %d)!" % (type_, ln))
 
           tx = InputTX(date, cur1, val1, cur2, val2)
 
