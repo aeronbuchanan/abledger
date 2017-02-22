@@ -796,6 +796,32 @@ class FileReader:
 
         return tx
 
+    elif firstline == 'Pair,Type,Price,Amount,Fee Rate,maker/taker,Total paid,Amount received,Date and time':
+      # gatecoin
+      def parseline(line, ln):
+        entries = extractCSVs(line, 9, ln)
+        if len(entries) == 0:
+          return None
+        (currencies, type_, rate, offer, feerate, category, paid, received, timestr) = entries
+        date = time.strftime("%Y-%m-%d-%H-%M", time.strptime(timestr, "%Y-%m-%d %H:%M:%S")) # 2016-05-07 00:39:42
+        curcheck1 = currencies[:3]
+        curcheck2 = currencies[-3:]
+        (val1, cur1) = paid.split(" ")
+        (val2, cur2) = received.split(" ")
+        val1 = -float(val1)
+        val2 = float(val2)
+
+        # currency check
+        if not ((curcheck1 == cur1 and curcheck2 == cur2) or (curcheck1 == cur2 and curcheck2 == cur1)): 
+          exit('ERROR: currency mismatch in Gatecoin file on line %d: (%s-%s) vs (%s-%s)' % (ln, curcheck1, curcheck2, cur1, cur2))
+        # fee check
+        feeMultiplier = 1.0 + float(feerate[:-1]) / 100
+        total = feeMultiplier * float(offer) * float(rate)
+        if abs(total + val1) > 1e-5: # ledger entries rounded by gatecoin to nearest 1e-5
+          exit('ERROR: total paid mismatch in Gatecoin file on line %d: %f vs %f' % (ln, total, val1))
+
+        return InputTX(date, cur1, val1, cur2, val2)
+
     else:
       exit("ERROR: Unknown file format with first line '" + firstline + "'")
 
